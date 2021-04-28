@@ -1,0 +1,327 @@
+
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8" />
+        <title>sar's blog</title>
+
+        <link href="/style/style.css" rel="stylesheet" />
+
+    </head>
+
+    <body>
+
+        <h1>sar's blog</h1>
+        <hr>
+<h2>Analysis of a nanocore loader</h2>
+<p>Recently I analysed a malware I found on <a href="https://bazaar.abuse.ch/">https://bazaar.abuse.ch/</a>. Its SHA256 is <code>fb01157b437b00f34999faa320bb55c8e44bdbb415e9a15503035bfe0e1d40d6</code> and the binary is marked as Nanocore on the website.</p>
+<p>This blog post won't cover the analysis of the final nanocore payload, as it's already pretty well described on the internet.</p>
+<p>Running <code>file</code> on the binary returns the following</p>
+<pre><code>sar@pc:~/nanocore_loader$ file fb01157b437b00f34999faa320bb55c8e44bdbb415e9a15503035bfe0e1d40d6.exe 
+fb01157b437b00f34999faa320bb55c8e44bdbb415e9a15503035bfe0e1d40d6.exe: PE32 executable (GUI) Intel 80386, for MS Windows, Nullsoft Installer self-extracting archive
+</code></pre>
+<p>Nullsoft Installer is an installer that allows to write a small script to describe how the files will be installed on the system. Old versions of 7zip helps us to extract the script and the installed files.</p>
+<p><img alt="7zip1" src="../../../../static/nanocore_loader_analysis/7zip1.png" />
+<img alt="7zip2" src="../../../../static/nanocore_loader_analysis/7zip2.png" /></p>
+<p>The binary contains 4 files: 
+- <code>[NSIS].nsi</code> which is the Nullsoft script
+- <code>xavbedcnsrtbhix</code> which is a 12Kb file of encrypted data
+- <code>nejus0or2e4wbg8rhay</code> which is a 277Kb file of encrypted data
+- <code>$PLUGINSDIR/xktfu.dll</code> which is a 5Kb dll</p>
+<p>Here's the content of the script:</p>
+<pre><code>; NSIS script NSIS-3 BadCmd=11
+; Install
+
+SetCompressor zlib
+
+; --------------------
+; HEADER SIZE: 3073
+; START HEADER SIZE: 300
+; MAX STRING LENGTH: 1024
+; STRING CHARS: 755
+
+OutFile [NSIS].exe
+!include WinMessages.nsh
+
+
+
+; --------------------
+; LANG TABLES: 1
+; LANG STRINGS: 47
+
+Name &quot;Template Method Pattern&quot;
+BrandingText &quot;Nullsoft Install System v3.06.1&quot;
+
+; LANG: 1033
+LangString LSTR_0 1033 &quot;Nullsoft Install System v3.06.1&quot;
+LangString LSTR_1 1033 &quot;$(LSTR_2) Setup&quot;
+LangString LSTR_2 1033 &quot;Template Method Pattern&quot;
+LangString LSTR_5 1033 &quot;Can't write: &quot;
+LangString LSTR_8 1033 &quot;Could not find symbol: &quot;
+LangString LSTR_9 1033 &quot;Could not load: &quot;
+LangString LSTR_17 1033 &quot;Error decompressing data! Corrupted installer?&quot;
+LangString LSTR_21 1033 &quot;Extract: &quot;
+LangString LSTR_22 1033 &quot;Extract: error writing to file &quot;
+LangString LSTR_24 1033 &quot;No OLE for: &quot;
+LangString LSTR_25 1033 &quot;Output folder: &quot;
+LangString LSTR_29 1033 &quot;Skipped: &quot;
+LangString LSTR_30 1033 &quot;Copy Details To Clipboard&quot;
+LangString LSTR_36 1033 &quot;Error opening file for writing: $\r$\n$\r$\n$0$\r$\n$\r$\nClick Abort to stop the installation,$\r$\nRetry to try again, or$\r$\nIgnore to skip this file.&quot;
+LangString LSTR_37 1033 Custom
+LangString LSTR_38 1033 Cancel
+LangString LSTR_39 1033 &quot;: Installing&quot;
+LangString LSTR_40 1033 &quot;Show &amp;details&quot;
+LangString LSTR_41 1033 Completed
+LangString LSTR_42 1033 &quot;&lt; &amp;Back&quot;
+LangString LSTR_43 1033 &quot;&amp;Next &gt;&quot;
+LangString LSTR_44 1033 &quot;Click Next to continue.&quot;
+LangString LSTR_45 1033 &quot;: Completed&quot;
+LangString LSTR_46 1033 &amp;Close
+
+
+InstType $(LSTR_37)    ;  Custom
+InstallDir $TEMP
+; wininit = $WINDIR\wininit.ini
+
+
+; --------------------
+; PAGES: 2
+
+; Page 0
+Page instfiles
+  CompletedText $(LSTR_41)    ;  Completed
+  DetailsButtonText $(LSTR_40)    ;  &quot;Show &amp;details&quot;
+
+/*
+; Page 1
+Page COMPLETED
+*/
+
+
+; --------------------
+; SECTIONS: 1
+; COMMANDS: 23
+
+Function .onInit
+  SetOutPath $INSTDIR
+  File xavbedcnsrtbhix
+  File nejus0or2e4wbg8rhay
+  xktfu::Cgrlcpdlsle
+    ; Call Initialize_____Plugins
+    ; SetOverwrite off
+    ; File $PLUGINSDIR\xktfu.dll
+    ; SetDetailsPrint lastused
+    ; CallInstDLL $PLUGINSDIR\xktfu.dll Cgrlcpdlsle
+FunctionEnd
+
+
+Section ; Section_0
+SectionEnd
+
+
+/*
+Function Initialize_____Plugins
+  SetDetailsPrint none
+  StrCmp $PLUGINSDIR &quot;&quot; 0 label_19
+  Push $0
+  SetErrors
+  GetTempFileName $0
+  Delete $0
+  CreateDirectory $0 ; !!!! Unknown Params:  $0 &quot;&quot; ProgramFilesDir   ; 144 0 1
+  IfErrors label_20
+  StrCpy $PLUGINSDIR $0
+  Pop $0
+label_19:
+  Return
+
+label_20:
+  MessageBox MB_OK|MB_ICONSTOP &quot;Error! Can't initialize plug-ins directory. Please try again later.&quot; /SD IDOK
+  Quit
+FunctionEnd
+*/
+
+
+
+; --------------------
+; UNREFERENCED STRINGS:
+
+/*
+17 CommonFilesDir
+32 &quot;C:\Program Files&quot;
+49 $PROGRAMFILES
+53 &quot;$PROGRAMFILES\Common Files&quot;
+70 $COMMONFILES
+*/
+</code></pre>
+<p>The important part of the script is the function <code>.onInit</code> which basically does 4 things: 
+- Set the output directory to <code>%APPDATA%\Local\Temp</code>
+- Write <code>xavbedcnsrtbhix</code> to that directory
+- Write <code>nejus0or2e4wbg8rhay</code> to that directory
+- Execute function <code>Cgrlcpdlsle</code> of the plugin <code>xktfu.dll</code></p>
+<p>Let's have a look at this <code>xktfu.dll</code>.</p>
+<h2>xktfu.dll</h2>
+<p>The library is pretty small, and contains only 2 functions (including the exported one <code>Cgrlcpdlsle</code>). 
+<code>Cgrlcpdlsle</code> starts by performing an anti-debug and an anti-emulation check. The anti-debug is a simple call to <code>IsDebuggerPresent</code>, and the anti-emulation is a call to a function at <code>0x10001000</code> that will perform a loop from <code>0</code> to <code>0x75861fef</code>, in order to slow any eventual emulation.</p>
+<p>Right after, the library maps the content of <code>xavbedcnsrtbhix</code> in memory, using <code>CreateFileW</code>, <code>GetFileSize</code>, <code>VirtualAlloc</code> and <code>ReadFile</code>, then decrypts it using a custom algorithm.</p>
+<p><img alt="Decompiled function" src="../../../../static/nanocore_loader_analysis/xktfu_decompiled.png" /></p>
+<p>By reimplementing the algorithm in python, we successfully decrypt the shellcode.</p>
+<pre><code class="language-py">def ROR(a, b):
+    return ((a &gt;&gt; b) | (a &lt;&lt; (8 - b))) &amp; 0xff
+
+f = open(&quot;./xavbedcnsrtbhix&quot;, &quot;rb&quot;)
+
+b = bytearray(f.read())
+
+for i, c in enumerate(b):
+    res = (c - 0x3d) &amp; 0xff
+    res ^= 7
+    res = ROR(res, 1)
+    res -= i
+    res &amp;= 0xff
+    res = 255 - res
+    res -= i
+    res &amp;= 0xff
+    res ^= 0xd1
+    res += i 
+    res &amp;= 0xff
+    res ^= 0x93
+    res += 0x44
+    res &amp;= 0xff
+
+    b[i] = res
+    print(&quot;{:x}&quot;.format(res), end='')
+
+g = open(&quot;./xavbedcnsrtbhix_decrypted&quot;, &quot;wb&quot;)
+g.write(b)
+</code></pre>
+<p>The library then jumps on the very first byte of the shellcode.</p>
+<h2>xavbedcnsrtbhix</h2>
+<p>The shellcode performs multiples operations in order to silently runs Nanocore. It achieves persistence on the system, decryption of the next stage (<code>nejus0or2e4wbg8rhay</code>), process hollowing, and uses many tricks to reach its goal.</p>
+<h3>API resolving</h3>
+<p>The shellcode resolves the base address of <code>kernel32</code> by searching in the <code>InLoadOrderModuleList</code> list of the Process Environment Block. Then, it finds API addresses by comparing the hash of exports name with hardcoded values. </p>
+<p>The hashing algorithm is the following one:</p>
+<pre><code class="language-py">hash = 0x2326
+for c in str:
+    hash *= 0x21
+    hash += c
+    hash &amp;= 0xffffffff  
+</code></pre>
+<p>Once <code>LoadLibraryW</code> has been resolved, the shellcode loads the library it needs, and resolves API addresses using the same method.</p>
+<h3>Persistence</h3>
+<p>The shellcode achieves persistence by writing the original binary in the <code>Run</code> registry key (<code>HKCU\System\Software\Microsoft\Windows\CurrentVersion\Run</code>. In that particular shellcode, the operation fails because the API <code>PathAppend</code> is used to concatanate the <code>%APPDATA%</code> directory with a too long string. The last stage, Nanocore, successfully achieves this instead.</p>
+<p><img alt="Persistence" src="../../../../static/nanocore_loader_analysis/persistence.png" /></p>
+<h3>Custom RC4</h3>
+<p>The next stage is encrypted using a modified version of RC4, where the stream is xored with the RC4 key (<code>40fbb79f6fda487d8f06db1c793101bd</code>). The following python script decrypts the next stage.</p>
+<pre><code class="language-py">def KSA(key):
+    keylength = len(key)
+
+    S = []
+    for i in range(256):
+        S.append(i)
+
+    j = 0
+    for i in range(256):
+        j = (j + S[i] + key[i % keylength]) % 256
+        S[i], S[j] = S[j], S[i]  # swap
+
+    for i in range(256):
+        print(hex(S[i]), end=',')
+
+    return S
+
+
+def PRGA(S):
+    i = 0
+    j = 0
+    while True:
+        i = (i + 1) % 256
+        j = (j + S[i]) % 256
+        S[i], S[j] = S[j], S[i]  # swap
+
+        K = S[(S[i] + S[j]) % 256]
+        yield K
+
+
+def RC4(key):
+    S = KSA(key)
+    return PRGA(S)
+
+
+if __name__ == '__main__':
+    key = '40fbb79f6fda487d8f06db1c793101bd'.encode()
+    f = open('./nejus0or2e4wbg8rhay', 'rb')
+    b = bytearray(f.read())
+
+    keystream = RC4(key)
+    for i, _ in enumerate(b):
+        b[i] ^= next(keystream) ^ key[i % len(key)]
+
+    g = open('./nejus0or2e4wbg8rhay_decrypted', 'wb')
+    g.write(b)
+</code></pre>
+<h3>Process Hollowing</h3>
+<p>In order to execute the next stage, the shellcode performs process hollowing. It creates another process (in a suspended state) of the original binary, then replaces all the binary sections using the following list of syscalls:
+- <code>NtMapViewOfSection</code>
+- <code>NtUnmapViewOfSection</code>
+- <code>NtWriteVirtualMemory</code>
+- <code>NtCreateSection</code>
+- <code>NtResumeThread</code></p>
+<p><img alt="Injection" src="../../../../static/nanocore_loader_analysis/injection.png" /></p>
+<p>I will not explain in details how the process hollowing is done, as it's well explained everywhere on the internet.</p>
+<h3>Direct syscall</h3>
+<p>The shellcode uses the instructions <code>sysenter</code> (on a 32 bit system) and <code>syscall</code> (on a 64 bit system) to directly call the syscalls listed above. The syscalls numbers aren't hardcoded, instead, the shellcode manually map <code>ntdll.dll</code> in memory, finds the corresponding wrapper to the corresponding syscalls using the hashing method described above, then steals the syscall number by looking for <code>mov eax, XX</code> instructions. </p>
+<p>On a 64 bit system, as the process is a 32 bit one, the shellcode switch to 64 bit mode using the instruction <code>retf</code></p>
+<p><img alt="heaven's gate" src="../../../../static/nanocore_loader_analysis/heaven_gate.png" /></p>
+<h2>nejus0or2e4wbg8rhay</h2>
+<p>The next stage is the one executing the Nanocore RAT. It contains the RAT as its only resource. It will simply loads the resource and prepare the execution. As Nanocore is a .NET binary, the binary need to initialize the .NET framework to call .NET functions natively. This initialisation is done using COM interfaces, and is partially explained in the <a href="https://docs.microsoft.com/en-us/previous-versions/dotnet/netframework-4.0/01918c6x(v=vs.100)">msdn</a>.</p>
+<p><img alt="load_resource" src="../../../../static/nanocore_loader_analysis/load_resource.png" /></p>
+<h2>IOCs</h2>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Sha256</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>original_file</td>
+<td>fb01157b437b00f34999faa320bb55c8e44bdbb415e9a15503035bfe0e1d40d6</td>
+</tr>
+<tr>
+<td>xktfu.dll</td>
+<td>9c94096638fbad8f4f41e33012437c149ecd4ab055e56fddacbd35cbcb2adcb6</td>
+</tr>
+<tr>
+<td>xavbedcnsrtbhix</td>
+<td>b4bc8bcafc597734dff776d588dcf7f82c6ba6a1ba96f04a0b384b3f30aa4e24</td>
+</tr>
+<tr>
+<td>xavbedcnsrtbhix_decrypted</td>
+<td>eed66b195ab779d5367bfbe92feeafe5db8ec13e8d657a8417c7d9e07680315b</td>
+</tr>
+<tr>
+<td>nejus0or2e4wbg8rhay</td>
+<td>af23271a22b4657cf3765bb7a1a40e130cb9145d4549d004cf9baf1c4cb854ca</td>
+</tr>
+<tr>
+<td>nejus0or2e4wbg8rhay_decrypted</td>
+<td>7c906c16071a4ebcafb881c4b9c708251e12ce4c45f128b8b62df520463e9c45</td>
+</tr>
+<tr>
+<td>nanocore.exe</td>
+<td>9ce9bdddbd6ebdd12d1b2234e60f0eb23a72f24b9419ef1bc47267f2c27da26d</td>
+</tr>
+</tbody>
+</table>
+<h2>Resources</h2>
+<p><a href="../../../../static/nanocore_loader_analysis/xavbedcnsrtbhix_decrypted.gzf">Here</a>'s the Ghidra zip file of <code>xavbedcnsrtbhix_decrypted</code></p>
+        
+        <hr>
+        <a href="https://twitter.com/sar5430">Twitter</a> - 
+        <a href="https://github.com/sar5430">Github</a> - 
+        <a href="https://discord.com/">Discord:</a> sar#5430 -
+        Visit <a href="https://crackmes.one/">Crackmes.one</a>!
+    </body>
+</html>
+    

@@ -1,0 +1,20 @@
+@font-face 
+{
+    font-family: "Roboto";
+    src:url("Roboto-Regular.ttf");
+}
+
+body
+{
+    width: 60%;
+    margin: auto;
+    font-family: "Roboto";
+    background-color: #eae4d2;
+}
+
+pre
+{
+    background-color: #f5f2dd;
+	border-style: double;
+    overflow: scroll;
+}

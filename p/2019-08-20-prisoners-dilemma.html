@@ -1,0 +1,985 @@
+
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8" />
+        <title>sar's blog</title>
+
+        <link href="/style/style.css" rel="stylesheet" />
+
+    </head>
+
+    <body>
+
+        <h1>sar's blog</h1>
+        <hr>
+<h2>Prisoners_dilemma crackme</h2>
+<p>This is a solution to the 4aca7f6c's crackme prisoners_dilemma.</p>
+<p>The crackme is available <a href="https://crackmes.one/crackme/5c5cb48233c5d43fd9a9386f">here</a></p>
+<p>It took me almost 4 days to solve prisonner_dilemma. 4aca7f6c set its difficulty
+to 3, but he was very modest. I hesitate to set it to 4 or 5 when I managed to
+solve it. In order to see the correct message printed on your screen, you need
+to solve 3 little maths game. The very interesting part of this crackme is that
+theses little games are really easy to understand, but pretty difficult to solve
+within the constraints of the crackme. I'll decompose this crackme in 6 steps:</p>
+<ul>
+<li>The encryption and mix-up</li>
+<li>The games' hidden codes</li>
+<li>Game_1</li>
+<li>Game_2</li>
+<li>Game_3</li>
+<li>Generate the input</li>
+</ul>
+<p>First things first, let's start with the encryption.</p>
+<h3>Encryption and mixup</h3>
+<p>The program isn't obfuscated at all, and we can clearly see the control flow. It
+starts by printing the ASCII-ART, ask for the input, and read 0x100 bytes on the 
+standard input.
+The program then checks if the index of the first "\n" is 42, and exit if not.
+If the first occurence of "\n" is at index 42, the program map 0x400 bytes with
+the permissions RWX.
+Then the program calls the function "encrypt_string", with our input as second 
+argument.</p>
+<p>The algorithm is easy to understand, here's how it works:</p>
+<ul>
+<li>It starts by xoring our input with a 42 bytes length hardcoded key.</li>
+<li>It cut the input in two half-parts B1 and B2 of length 21 each.</li>
+<li>Then it perform a custom encryption which is repeated 50 times.</li>
+<li>Finally it xor the result with an other 42 bytes length hardcoded key.</li>
+</ul>
+<p>I did not try to understand how this algorithm was working. I just noticed a
+small but important thing: If we consider the input as two distincts parts (B1 
+and B2), the modification of a byte at the index i (for B1 or B2), will not
+modify the previous bytes at the index &lt;= i (for B1 and B2). It'll allow us to
+bruteforce the solution at the end.</p>
+<p>To be a bit more precise, let's imagine this hexstring and its encrypted version:</p>
+<pre><code>index       0 1 2 3 4 5 6
+input       41424344454647
+encrypted   fadbe34522254e
+</code></pre>
+<p>Then if we change the 5th byte of the input, only the 5th and the 6th bytes will
+be modified in the encrypted output.</p>
+<p>Now that it's clear, let's keep moving. Our input is now encrypted, the program
+enter the function game_1. In the three differents games, the first function 
+called is the one I called "Check_and_mixup".</p>
+<p>This function (which is at 0x400b2d) accept two arguments:</p>
+<ul>
+<li>A part of our encrypted input</li>
+<li>An array of 32 bytes int, where array[i] = i</li>
+</ul>
+<p>It perform a check on a part of the encrypted input, then mixup and array 
+regarding the encrypted part. Again, here's how it works.</p>
+<ul>
+<li>In game_1, the string which is checked is encrypted_input[0:0xd] (len = 0xd)</li>
+<li>In game_2, the string which is checked is 
+encrypted_input[0xd:0x1b] (len = 0xe)</li>
+<li>In game_3, the string which is checked is 
+encrypted_input[0x1b:0x2a] (len = 0xf)</li>
+</ul>
+<p>The check is very simple:</p>
+<pre><code class="language-py">for i in range(len(part)):
+    if part[i] &gt; i:
+        return false
+return true
+</code></pre>
+<p>This means that the bytes at position 0, 0xd, and 0x1b are 0. 
+The bytes at position 1, 0xe and 0x1c are 0 or 1. 
+The bytes at position 2, 0xf and 0x1d are 0, 1 or 2.
+Etc.</p>
+<p>The mixup is pretty simple too. Once the check is passed, the program loop on 
+each bytes of the encrypted part starting at the last ones, and swap the byte at
+the index i with the byte at the index encrypted_part[i].</p>
+<p>Here's the algorithm:</p>
+<pre><code class="language-py">i = len(encrypted_part) - 1
+while i &gt;= 0:
+    swap(array[i], array[encrypted_part[i]])
+    i -= 1
+</code></pre>
+<p>This function give us an unique permutation of the original array. Let's keep
+moving to the next part.</p>
+<h3>Game's hidden codes</h3>
+<p>Now that our input has generated an unique permutation of the original array, 
+this array will be used to modify the control flow of the program.</p>
+<p>In each game, a function is called just after the <code>Check_and_mixup</code>. I named it
+<code>Modify_hidden_code</code>.</p>
+<p>Let's talk about the games' hidden codes. In the .rodata section, there are 3
+arrays of byte <code>0x4017c0 -&gt; game_3, 0x4019a0 -&gt; game_2, 0x401ba0 -&gt; game_1</code>.</p>
+<p>these arrays are executable code. Each array is composed by:</p>
+<pre><code>- An initializer
+- A dispatcher
+- Some blocks of code which I call "meta-instructions"
+</code></pre>
+<p>these meta-instructions all look the same in the original on-disk file. We can
+enumerate then. Let's say that for a array, the block 0 will be the one at the
+lowest address, followed by the block 1, etc.</p>
+<pre><code>- 1 or 2 operation on registers
+- mov r13, 0
+- jump dispatcher
+</code></pre>
+<p>The dispatcher jump to the next meta-instruction, regarding the value in r13.
+Obviously, at runtime, the <code>0</code> of the <code>mov r13, 0</code> instructions are modified,
+regarding the unique permutation generated by the encrypted_input ! </p>
+<p>If the array generated by the encrypted input is
+<code>[0xb, 0x1, 0x4, 0x3, 0x6, 0x00, 0x2, 0x7, 0x8, 0x9, 0xc, 0xa, 0x5]</code></p>
+<p>Then the control flow will be:</p>
+<ul>
+<li>Initializer</li>
+<li>Dispatcher </li>
+<li>Meta-instruction 0xb</li>
+<li>Dispatcher</li>
+<li>Meta-instruction 0x1</li>
+<li>Dispatcher</li>
+<li>[...]</li>
+<li>Meta-instruction 0x5</li>
+<li>Dispatcher</li>
+</ul>
+<p>We now have all elements to start to look at the games.</p>
+<h3>GAME 1</h3>
+<p>Let's start with game_1 !
+Once the <code>Check_and_mixup</code> and <code>Modify_hidden_code</code> are executed, the program 
+initialize two arrays of 7 32-bit integer.
+- The first array is populated with random values % 7.
+- The second one is populated with -1 in the 7 32-bits values.</p>
+<p>Then the program call the <code>hidden_code_game_1</code>, which is below.
+When the hidden code returns, it checks for each 7 32-bits values of both arrays
+if <code>array[i] == array2[i]</code>. If this assertion is false for all the 7 values,
+the input is wrong.
+In order to really validate that our permutation (= controlflow) is the good 
+one, the program does this 50 times.</p>
+<p>Let's have a look at the hidden code:</p>
+<pre><code>  401ba0:   41 50                   push   r8
+  401ba2:   49 89 d0                mov    r8,rdx
+  401ba5:   41 51                   push   r9
+  401ba7:   49 89 d1                mov    r9,rdx
+  401baa:   41 54                   push   r12
+  401bac:   4d 31 e4                xor    r12,r12
+  401baf:   41 55                   push   r13
+  401bb1:   4c 63 e9                movsxd r13,ecx
+  401bb4:   41 56                   push   r14
+  401bb6:   4c 8d 35 40 01 00 00    lea    r14,[rip+0x140]
+  401bbd:   49 81 fc 00 04 00 00    cmp    r12,0x400
+  401bc4:   0f 8d 1c 00 00 00       jge    401be6 
+  401bca:   4f 63 2c ae             movsxd r13,DWORD PTR [r14+r13*4]
+  401bce:   4d 01 f5                add    r13,r14
+  401bd1:   41 ff e5                jmp    r13
+  401bd4:   49 ff c4                inc    r12
+  401bd7:   41 83 fd 0d             cmp    r13d,0xd
+  401bdb:   0f 8d 05 00 00 00       jge    401be6 
+  401be1:   e9 d7 ff ff ff          jmp    401bbd
+  401be6:   83 c8 ff                or     eax,0xffffffff
+  401be9:   41 5e                   pop    r14
+  401beb:   41 5d                   pop    r13
+  401bed:   41 5c                   pop    r12
+  401bef:   41 59                   pop    r9
+  401bf1:   41 58                   pop    r8
+  401bf3:   c3                      ret    
+  401bf4:   42 8d 04 01             lea    eax,[rcx+r8*1]   ; block_0
+  401bf8:   41 bd 00 00 00 00       mov    r13d,0x0
+  401bfe:   e9 d1 ff ff ff          jmp    401bd4 
+  401c03:   01 d0                   add    eax,edx      ; block_1
+  401c05:   99                      cdq    
+  401c06:   85 c9                   test   ecx,ecx
+  401c08:   0f 84 d8 ff ff ff       je     401be6 
+  401c0e:   f7 f9                   idiv   ecx
+  401c10:   41 bd 00 00 00 00       mov    r13d,0x0
+  401c16:   e9 b9 ff ff ff          jmp    401bd4 
+  401c1b:   41 39 c8                cmp    r8d,ecx      ; block_2
+  401c1e:   0f 8d 0f 00 00 00       jge    401c33 
+  401c24:   42 89 14 86             mov    DWORD PTR [rsi+r8*4],edx
+  401c28:   41 bd 00 00 00 00       mov    r13d,0x0
+  401c2e:   e9 a1 ff ff ff          jmp    401bd4 
+  401c33:   31 c0                   xor    eax,eax      ; block_3
+  401c35:   41 5e                   pop    r14
+  401c37:   41 5d                   pop    r13
+  401c39:   41 5c                   pop    r12
+  401c3b:   41 59                   pop    r9
+  401c3d:   41 58                   pop    r8
+  401c3f:   c3                      ret    
+  401c40:   41 bd 00 00 00 00       mov    r13d,0x0     
+  401c46:   e9 89 ff ff ff          jmp    401bd4 
+  401c4b:   49 ff c1                inc    r9       ; block_4
+  401c4e:   e9 42 00 00 00          jmp    401c95 
+  401c53:   41 bd 00 00 00 00       mov    r13d,0x0
+  401c59:   e9 76 ff ff ff          jmp    401bd4 
+  401c5e:   45 31 c9                xor    r9d,r9d      ; block_5
+  401c61:   31 d2                   xor    edx,edx
+  401c63:   41 bd 00 00 00 00       mov    r13d,0x0
+  401c69:   e9 66 ff ff ff          jmp    401bd4 
+  401c6e:   45 39 c8                cmp    r8d,r9d      ; block_6
+  401c71:   0f 84 d4 ff ff ff       je     401c4b 
+  401c77:   41 bd 00 00 00 00       mov    r13d,0x0
+  401c7d:   e9 52 ff ff ff          jmp    401bd4 
+  401c82:   49 ff c0                inc    r8       ; block_7
+  401c85:   e9 47 00 00 00          jmp    401cd1 
+  401c8a:   41 bd 00 00 00 00       mov    r13d,0x0
+  401c90:   e9 3f ff ff ff          jmp    401bd4 
+  401c95:   44 39 c9                cmp    ecx,r9d      ; block_8
+  401c98:   0f 8e 56 ff ff ff       jle    401bf4 
+  401c9e:   41 bd 00 00 00 00       mov    r13d,0x0
+  401ca4:   e9 2b ff ff ff          jmp    401bd4 
+  401ca9:   89 d1                   mov    ecx,edx      ; block_9
+  401cab:   45 31 c0                xor    r8d,r8d
+  401cae:   41 bd 00 00 00 00       mov    r13d,0x0
+  401cb4:   e9 1b ff ff ff          jmp    401bd4 
+  401cb9:   29 d0                   sub    eax,edx      ; block_A
+  401cbb:   99                      cdq    
+  401cbc:   85 c9                   test   ecx,ecx
+  401cbe:   0f 84 22 ff ff ff       je     401be6 
+  401cc4:   f7 f9                   idiv   ecx
+  401cc6:   41 bd 00 00 00 00       mov    r13d,0x0
+  401ccc:   e9 03 ff ff ff          jmp    401bd4 
+  401cd1:   41 39 c8                cmp    r8d,ecx      ; block_B
+  401cd4:   0f 8d 59 ff ff ff       jge    401c33 
+  401cda:   41 bd 00 00 00 00       mov    r13d,0x0
+  401ce0:   e9 ef fe ff ff          jmp    401bd4 
+  401ce5:   44 39 c9                cmp    ecx,r9d      ; block_C
+  401ce8:   0f 8e 45 ff ff ff       jle    401c33 
+  401cee:   42 8b 04 8f             mov    eax,DWORD PTR [rdi+r9*4]
+  401cf2:   41 bd 00 00 00 00       mov    r13d,0x0
+</code></pre>
+<p>What I did is pretty simple: moving the value in array[0] to array2[0].
+This is possible with the following sequence of blocks:</p>
+<p><code>0x09,0x05,0x0c,0x0a,0x02,0x03</code></p>
+<p>We only used 6 of the 13 given blocks, so we can just append the others blocks.</p>
+<p>We now have our first permutation array ! We need to find the input, that will
+produces the permutation:</p>
+<p><code>[0x09,0x05,0x0c,0x0a,0x02,0x03,0x00,0x06,0x01,0x08,0x04,0x07,0x0b]</code></p>
+<p><em>NOTE: After some discussions with 4aca7f6c, this solution wasn't intended, 
+and the original problem was refering to the rainbow_hats_puzzle, which is well
+explained <a href="https://math.stackexchange.com/questions/149915/rainbow-hats-puzzle">here</a>.</em></p>
+<p>Anyway, that was a good and pretty easy start, and the second game will be WAY
+much harder.</p>
+<h3>GAME 2</h3>
+<p>In my opinion, game_2 was the hardest. This time, the program initialize an
+array of 50 elements. It starts by setting <code>array[i] = i</code>, then it mix-up the
+array using the Fisher-Yates algorithm. It is well explained everywhere on
+internet. I will not describe it because the important thing is that the program
+initialize an array of 50 elements, containing the number from 0 to 49, randomly
+shuffled.</p>
+<p>Then, the program call the hidden code with a pointer on this array as an input.</p>
+<p>When the hidden code stop, the program does the following:</p>
+<pre><code class="language-py">r = rand() % 50
+c = 25
+i = r
+while c &gt;= 0:
+    if array[i] == r:
+        return good
+    i = array[i]
+return wrong
+</code></pre>
+<p>The code is terribly simple. What it does is taking a random integer r between 0 
+and 49, and then check in the array if the element at index r is r. If not the
+new index to look at is the element that was compared to r. If it has to do this
+less than 25 times to find the value r, you're good. If not, you lose. Here's a
+scheme to fully understand how it works.</p>
+<pre><code>
+            +------&gt;24 +--------&gt; 37 +----------12+
+            |                                     |
+            +                                     |
++--------&gt; 17                                     |
+            ^                                     v
+            |                                     19
+            |                                     +
+            |                                     |
+            |                                     |
+            +                                     |
+            7&lt;-------------+48&lt;--------+3&lt;--------+
+</code></pre>
+<p>In this exemple, the random number picked by the program is 17. At the index 17,
+there's 24. At the index 24, there's 37, etc. It takes the program 8 step to
+find the random value 17. </p>
+<p>In this exemple, it works. But most of the time, the Fisher-Yates algorithm will
+shuffle the array in a way that there will be a linked-list containing more than
+25 elements. To be precise, the algorithm will create N linked lists, where
+<code>1 &lt;= N &lt;= 50</code>. (50 means that the list is not shuffled and each element is equal
+to its index). Obviously, the sum lengths of the N linked list is 50.</p>
+<p>So what do we have to do ? As in game_1, we have to find an algorithm that take 
+an array as input, and shuffle the array in a way that all looped linked-list
+with length &gt; 25 will be removed. The number hasn't been randomly chose. It's
+the exact half of the array's length. It means that if there's a looped linked 
+list containing more than 25 elements, it's the only one in the array. It's 
+obvious, the sum of all lengths is exactly equal to 50, so if a list contains at
+least 26 elements, the others cannot contain more than 24.</p>
+<p>Let's look at the hidden code:</p>
+<pre><code>  4019a0:   41 50                   push   r8
+  4019a2:   4d 31 c0                xor    r8,r8
+  4019a5:   41 51                   push   r9
+  4019a7:   4d 31 c9                xor    r9,r9
+  4019aa:   41 52                   push   r10
+  4019ac:   4d 31 d2                xor    r10,r10
+  4019af:   41 54                   push   r12
+  4019b1:   4d 31 e4                xor    r12,r12
+  4019b4:   41 55                   push   r13
+  4019b6:   4c 63 ea                movsxd r13,edx
+  4019b9:   41 56                   push   r14
+  4019bb:   4c 8d 35 4c 01 00 00    lea    r14,[rip+0x14c] 
+  4019c2:   89 f2                   mov    edx,esi
+  4019c4:   31 c9                   xor    ecx,ecx
+  4019c6:   49 81 fc 00 20 00 00    cmp    r12,0x2000
+  4019cd:   0f 8d 1c 00 00 00       jge    4019ef 
+  4019d3:   4f 63 2c ae             movsxd r13,DWORD PTR [r14+r13*4]
+  4019d7:   4d 01 f5                add    r13,r14
+  4019da:   41 ff e5                jmp    r13
+  4019dd:   49 ff c4                inc    r12
+  4019e0:   41 83 fd 0e             cmp    r13d,0xe
+  4019e4:   0f 8d 05 00 00 00       jge    4019ef 
+  4019ea:   e9 d7 ff ff ff          jmp    4019c6 
+  4019ef:   83 c8 ff                or     eax,0xffffffff
+  4019f2:   41 5e                   pop    r14
+  4019f4:   41 5d                   pop    r13
+  4019f6:   41 5c                   pop    r12
+  4019f8:   41 5a                   pop    r10
+  4019fa:   41 59                   pop    r9
+  4019fc:   41 58                   pop    r8
+  4019fe:   c3                      ret    
+  4019ff:   48 63 0c 8f             movsxd rcx,DWORD PTR [rdi+rcx*4] ; b_0
+  401a03:   41 bd 00 00 00 00       mov    r13d,0x0
+  401a09:   e9 cf ff ff ff          jmp    4019dd 
+  401a0e:   8b 14 8f                mov    edx,DWORD PTR [rdi+rcx*4] ; b_1
+  401a11:   42 31 14 8f             xor    DWORD PTR [rdi+r9*4],edx
+  401a15:   42 8b 14 8f             mov    edx,DWORD PTR [rdi+r9*4]
+  401a19:   31 14 8f                xor    DWORD PTR [rdi+rcx*4],edx
+  401a1c:   8b 14 8f                mov    edx,DWORD PTR [rdi+rcx*4]
+  401a1f:   42 31 14 8f             xor    DWORD PTR [rdi+r9*4],edx
+  401a23:   e9 65 00 00 00          jmp    401a8d 
+  401a28:   41 bd 00 00 00 00       mov    r13d,0x0
+  401a2e:   e9 aa ff ff ff          jmp    4019dd 
+  401a33:   41 ba 01 00 00 00       mov    r10d,0x1          ; b_2
+  401a39:   41 bd 00 00 00 00       mov    r13d,0x0
+  401a3f:   e9 99 ff ff ff          jmp    4019dd 
+  401a44:   4d 63 c8                movsxd r9,r8d            ; b_3
+  401a47:   41 bd 00 00 00 00       mov    r13d,0x0
+  401a4d:   e9 8b ff ff ff          jmp    4019dd 
+  401a52:   41 f6 c2 01             test   r10b,0x1          ; b_4
+  401a56:   0f 84 e8 ff ff ff       je     401a44 
+  401a5c:   41 bd 00 00 00 00       mov    r13d,0x0
+  401a62:   e9 76 ff ff ff          jmp    4019dd 
+  401a67:   ff c2                   inc    edx           ; b_5
+  401a69:   e9 87 00 00 00          jmp    401af5 
+  401a6e:   41 bd 00 00 00 00       mov    r13d,0x0
+  401a74:   e9 64 ff ff ff          jmp    4019dd 
+  401a79:   41 39 c2                cmp    r10d,eax          ; b_6
+  401a7c:   0f 8c e5 ff ff ff       jl     401a67 
+  401a82:   41 bd 00 00 00 00       mov    r13d,0x0
+  401a88:   e9 50 ff ff ff          jmp    4019dd 
+  401a8d:   31 c0                   xor    eax,eax           ; b_7
+  401a8f:   41 5e                   pop    r14
+  401a91:   41 5d                   pop    r13
+  401a93:   41 5c                   pop    r12
+  401a95:   41 5a                   pop    r10
+  401a97:   41 59                   pop    r9
+  401a99:   41 58                   pop    r8
+  401a9b:   c3                      ret    
+  401a9c:   41 bd 00 00 00 00       mov    r13d,0x0
+  401aa2:   e9 36 ff ff ff          jmp    4019dd 
+  401aa7:   41 ff c2                inc    r10d          ; b_8
+  401aaa:   41 bd 00 00 00 00       mov    r13d,0x0
+  401ab0:   e9 28 ff ff ff          jmp    4019dd 
+  401ab5:   4e 63 04 87             movsxd r8,DWORD PTR [rdi+r8*4]   ; b_9
+  401ab9:   41 bd 00 00 00 00       mov    r13d,0x0
+  401abf:   e9 19 ff ff ff          jmp    4019dd 
+  401ac4:   42 3b 14 8f             cmp    edx,DWORD PTR [rdi+r9*4]  ; b_A
+  401ac8:   0f 85 d9 ff ff ff       jne    401aa7 
+  401ace:   41 bd 00 00 00 00       mov    r13d,0x0
+  401ad4:   e9 04 ff ff ff          jmp    4019dd 
+  401ad9:   89 f0                   mov    eax,esi           ; b_B
+  401adb:   41 bd 00 00 00 00       mov    r13d,0x0
+  401ae1:   e9 f7 fe ff ff          jmp    4019dd 
+  401ae6:   d1 e8                   shr    eax,1             ; b_C
+  401ae8:   31 d2                   xor    edx,edx
+  401aea:   41 bd 00 00 00 00       mov    r13d,0x0
+  401af0:   e9 e8 fe ff ff          jmp    4019dd 
+  401af5:   39 f2                   cmp    edx,esi           ; b_D
+  401af7:   0f 8d 90 ff ff ff       jge    401a8d 
+  401afd:   48 63 ca                movsxd rcx,edx
+  401b00:   4c 63 c2                movsxd r8,edx
+  401b03:   41 bd 00 00 00 00       mov    r13d,0x0
+  401b09:   e9 cf fe ff ff          jmp    4019dd 
+</code></pre>
+<p>I commented the blocks numbers, as in game_1's hidden code. Let's have a look at
+the blocks. The block_1 is important, it's the one that allow us to swap the
+element at index <code>rcx</code> and <code>r9</code>. But then after the execution of this block, the
+program jumps to block_7 which exit. It means that we need to satisfy the
+conditions by swapping two elements just one time.</p>
+<p>Finding the algorithm was really hard for me and took me almost 2 days. I was
+missing a small thing.</p>
+<p>Here's the first idea I had in python:</p>
+<pre><code>for i, c in enumerate(array):
+    len, ele25 = count_len_list_and_get_25th_element(array[i])
+    if len &gt; 25:
+        swap(array, i, ele25)
+        break
+</code></pre>
+<p>The algorithm is really simple, and it totally works in python ! With just one 
+swap, the length of the longest linked-list in the array is &lt;= 25!</p>
+<p>The problem is that it's IMPOSSIBLE to implement this with the blocks we have in
+the hidden code. You cannot get the 25th element of the list. </p>
+<p>The solution is not far from this algo, but is way more subtle. When you're
+searching for the r value in the linked list, just increment a second pointer
+when two elements are find. 
+So you'll need two pointers, the one which count the elements, and the one which
+is incremented when the counter count 2!</p>
+<p>Another graph to explain:</p>
+<p>When you start:</p>
+<pre><code>counter_ptr      +------&gt;24 +--------&gt; 37 +--------&gt; 12+
+semi_ptr         |                                     |
+                 +                                     |
+     +--------&gt; 17                                     |
+                 ^                                     v
+                 |                                     19
+                 |                                     +
+                 |                                     |
+                 |                                     |
+                 +                                     |
+                 7&lt;-------------+48&lt;----------+3&lt;------+
+</code></pre>
+<p>Then</p>
+<pre><code>                      counter_ptr
+
+                       +
+                       |
+                       |
+                       v
+semi_ptr      +------&gt;24 +--------&gt; 37 +--------&gt; 12+
+              |                                     |
+              +                                     |
+  +--------&gt; 17                                     |
+              ^                                     v
+              |                                     19
+              |                                     +
+              |                                     |
+              |                                     |
+              +                                     |
+              7&lt;--------------+48&lt;--------+3&lt;-------+
+</code></pre>
+<p>Then</p>
+<pre><code>                 semi_ptr       counter_ptr
+
+                    +             +
+                    |             |
+                    v             v
+            +------&gt;24 +--------&gt; 37 +--------&gt; 12+
+            |                                     |
+            +                                     |
++--------&gt; 17                                     |
+            ^                                     v
+            |                                     19
+            |                                     +
+            |                                     |
+            |                                     |
+            +                                     |
+            7&lt;--------------+48&lt;--------+3&lt;-------+
+</code></pre>
+<p>Then at the end:</p>
+<pre><code>
+                 +------&gt;24 +--------&gt; 37 +--------&gt; 12+
+counter_ptr      |                                     |
+                 +                                     |
+     +--------&gt; 17                                     |
+                 ^                                     v           semi_ptr
+                 |                                     19 &lt;--------+
+                 |                                     +
+                 |                                     |
+                 |                                     |
+                 +                                     |
+                 7&lt;--------------+48&lt;--------+3&lt;-------+
+</code></pre>
+<p>And then you just have to swap the elements in <code>semi_ptr</code> and <code>counter_ptr</code>.</p>
+<p>After this, the graph now looks like:</p>
+<pre><code> +---&gt;24+-----&gt;37+-----&gt;12
+ |                       +
+ |                       |
+ +                       |
+ 19&lt;---------------------+
+
++------------------------&gt;17
+|                          +
+|                          |
+|                          |
++                          |
+7&lt;--------+48&lt;------+3&lt;----+
+</code></pre>
+<p>We just divided the looped linked list of length 8 in 2 looped linked-lists of
+length 4 each.</p>
+<p>Once you find the algorithm, finding the good blocks is pretty easy. </p>
+<p>Here's what we need:</p>
+<pre><code>[0x0b,0x0c,0x0d,0x02,0x08,0x09,0x04,0x00,0x03,0x0a,0x06,0x01,0x05,0x07]
+</code></pre>
+<h3>GAME 3</h3>
+<p>The last game is pretty cool too, and is pretty similar to the second one in its
+construction. The program starts by generating a random value r between 2500 and
+5000. It then malloc an array of r 32 bits integers. It then initialize this
+array with the values <code>(i + 1) % r</code> at the index <code>i</code>.</p>
+<p>The array looks like this</p>
+<pre><code>[1, 2, 3, 4, ..., r - 1, 0]
+</code></pre>
+<p>The hidden_code of game_3 is called, the programs checks if its return value
+is &lt; r. Then call the check function, which accept the array and the return
+value of the hidden code as input.</p>
+<p>Here's what the check function does:</p>
+<pre><code class="language-py">def check(array, return_value_hidden):
+    cpt = 0
+    cur = 0
+    while True:
+        v3 = array[cur]
+        if cur == v3:
+            break
+        v4 = array[v3]
+        array[cur] = v4
+        cur = v4
+    if cur == return_value_hidden:
+        return good
+    return false
+</code></pre>
+<p>I did not try to understand this mixing algorithm, I just looked at the values 
+of cur at the end of the function for <code>2 &lt;= i &lt;= 2500</code>, and looked for a
+pattern.</p>
+<p>Here's the result:</p>
+<pre><code>cur = 0 i: 2
+cur = 2 i: 3
+cur = 0 i: 4
+cur = 2 i: 5
+cur = 4 i: 6
+cur = 6 i: 7
+cur = 0 i: 8
+cur = 2 i: 9
+cur = 4 i: 10
+cur = 6 i: 11
+cur = 8 i: 12
+cur = 10 i: 13
+cur = 12 i: 14
+cur = 14 i: 15
+cur = 0 i: 16
+cur = 2 i: 17
+cur = 4 i: 18
+cur = 6 i: 19
+cur = 8 i: 20
+cur = 10 i: 21
+cur = 12 i: 22
+cur = 14 i: 23
+cur = 16 i: 24
+cur = 18 i: 25
+cur = 20 i: 26
+cur = 22 i: 27
+cur = 24 i: 28
+cur = 26 i: 29
+cur = 28 i: 30
+cur = 30 i: 31
+cur = 0 i: 32
+cur = 2 i: 33
+cur = 4 i: 34
+cur = 6 i: 35
+cur = 8 i: 36
+cur = 10 i: 37
+cur = 12 i: 38
+cur = 14 i: 39
+cur = 16 i: 40
+cur = 18 i: 41
+cur = 20 i: 42
+cur = 22 i: 43
+cur = 24 i: 44
+cur = 26 i: 45
+cur = 28 i: 46
+cur = 30 i: 47
+cur = 32 i: 48
+cur = 34 i: 49
+cur = 36 i: 50
+cur = 38 i: 51
+cur = 40 i: 52
+cur = 42 i: 53
+cur = 44 i: 54
+cur = 46 i: 55
+cur = 48 i: 56
+cur = 50 i: 57
+cur = 52 i: 58
+cur = 54 i: 59
+cur = 56 i: 60
+cur = 58 i: 61
+cur = 60 i: 62
+cur = 62 i: 63
+cur = 0 i: 64
+cur = 2 i: 65
+cur = 4 i: 66
+cur = 6 i: 67
+cur = 8 i: 68
+cur = 10 i: 69
+cur = 12 i: 70
+cur = 14 i: 71
+cur = 16 i: 72
+cur = 18 i: 73
+cur = 20 i: 74
+cur = 22 i: 75
+cur = 24 i: 76
+cur = 26 i: 77
+cur = 28 i: 78
+cur = 30 i: 79
+cur = 32 i: 80
+cur = 34 i: 81
+cur = 36 i: 82
+cur = 38 i: 83
+cur = 40 i: 84
+cur = 42 i: 85
+cur = 44 i: 86
+cur = 46 i: 87
+cur = 48 i: 88
+cur = 50 i: 89
+cur = 52 i: 90
+cur = 54 i: 91
+cur = 56 i: 92
+cur = 58 i: 93
+cur = 60 i: 94
+cur = 62 i: 95
+cur = 64 i: 96
+cur = 66 i: 97
+cur = 68 i: 98
+cur = 70 i: 99
+cur = 72 i: 100
+cur = 74 i: 101
+cur = 76 i: 102
+cur = 78 i: 103
+cur = 80 i: 104
+cur = 82 i: 105
+cur = 84 i: 106
+cur = 86 i: 107
+cur = 88 i: 108
+cur = 90 i: 109
+cur = 92 i: 110
+cur = 94 i: 111
+cur = 96 i: 112
+cur = 98 i: 113
+cur = 100 i: 114
+cur = 102 i: 115
+cur = 104 i: 116
+cur = 106 i: 117
+cur = 108 i: 118
+cur = 110 i: 119
+cur = 112 i: 120
+cur = 114 i: 121
+cur = 116 i: 122
+cur = 118 i: 123
+cur = 120 i: 124
+cur = 122 i: 125
+cur = 124 i: 126
+cur = 126 i: 127
+cur = 0 i: 128
+cur = 2 i: 129
+cur = 4 i: 130
+cur = 6 i: 131
+cur = 8 i: 132
+cur = 10 i: 133
+cur = 12 i: 134
+cur = 14 i: 135
+cur = 16 i: 136
+cur = 18 i: 137
+cur = 20 i: 138
+cur = 22 i: 139
+cur = 24 i: 140
+cur = 26 i: 141
+cur = 28 i: 142
+cur = 30 i: 143
+cur = 32 i: 144
+cur = 34 i: 145
+cur = 36 i: 146
+cur = 38 i: 147
+cur = 40 i: 148
+cur = 42 i: 149
+cur = 44 i: 150
+cur = 46 i: 151
+</code></pre>
+<p>It's pretty easy to recognize the pattern. For a value i, we find the biggest 
+power of two below i, let's call it p, then <code>cur = 2*(i - p)</code>.</p>
+<p>Now, let's look at the hidden code, and build this algorithm.</p>
+<pre><code>  4017c0:   41 50                   push   r8
+  4017c2:   4d 31 c0                xor    r8,r8
+  4017c5:   41 54                   push   r12
+  4017c7:   4d 31 e4                xor    r12,r12
+  4017ca:   41 55                   push   r13
+  4017cc:   4c 63 ee                movsxd r13,esi
+  4017cf:   41 56                   push   r14
+  4017d1:   4c 8d 35 43 01 00 00    lea    r14,[rip+0x143]
+  4017d8:   b8 01 00 00 00          mov    eax,0x1
+  4017dd:   49 81 fc 00 04 00 00    cmp    r12,0x400
+  4017e4:   0f 8d 1c 00 00 00       jge    401806 
+  4017ea:   4f 63 2c ae             movsxd r13,DWORD PTR [r14+r13*4]
+  4017ee:   4d 01 f5                add    r13,r14
+  4017f1:   41 ff e5                jmp    r13
+  4017f4:   49 ff c4                inc    r12
+  4017f7:   41 83 fd 0f             cmp    r13d,0xf
+  4017fb:   0f 8d 05 00 00 00       jge    401806 
+  401801:   e9 d7 ff ff ff          jmp    4017dd 
+  401806:   83 c8 ff                or     eax,0xffffffff
+  401809:   41 5e                   pop    r14
+  40180b:   41 5d                   pop    r13
+  40180d:   41 5c                   pop    r12
+  40180f:   41 58                   pop    r8
+  401811:   c3                      ret    
+  401812:   89 fa                   mov    edx,edi      ; block_0
+  401814:   d1 ea                   shr    edx,1
+  401816:   41 bd 00 00 00 00       mov    r13d,0x0
+  40181c:   e9 d3 ff ff ff          jmp    4017f4 
+  401821:   41 f7 d0                not    r8d      ; block_1
+  401824:   41 bd 00 00 00 00       mov    r13d,0x0
+  40182a:   e9 c5 ff ff ff          jmp    4017f4 
+  40182f:   83 f8 01                cmp    eax,0x1      ; block_2
+  401832:   89 cf                   mov    edi,ecx
+  401834:   0f 84 e7 ff ff ff       je     401821 
+  40183a:   41 bd 00 00 00 00       mov    r13d,0x0
+  401840:   e9 af ff ff ff          jmp    4017f4 
+  401845:   44 21 c7                and    edi,r8d      ; block_3
+  401848:   41 bd 00 00 00 00       mov    r13d,0x0
+  40184e:   e9 a1 ff ff ff          jmp    4017f4 
+  401853:   81 e2 55 55 55 55       and    edx,0x55555555   ; block_4
+  401859:   29 d7                   sub    edi,edx
+  40185b:   41 bd 00 00 00 00       mov    r13d,0x0
+  401861:   e9 8e ff ff ff          jmp    4017f4 
+  401866:   89 f8                   mov    eax,edi      ; block_5
+  401868:   c1 e8 04                shr    eax,0x4
+  40186b:   41 bd 00 00 00 00       mov    r13d,0x0
+  401871:   e9 7e ff ff ff          jmp    4017f4 
+  401876:   89 f8                   mov    eax,edi      ; block_6
+  401878:   c1 ef 02                shr    edi,0x2
+  40187b:   41 bd 00 00 00 00       mov    r13d,0x0
+  401881:   e9 6e ff ff ff          jmp    4017f4
+  401886:   89 f9                   mov    ecx,edi      ; block_7
+  401888:   41 b8 ff ff ff ff       mov    r8d,0xffffffff
+  40188e:   41 bd 00 00 00 00       mov    r13d,0x0
+  401894:   e9 5b ff ff ff          jmp    4017f4 
+  401899:   01 f8                   add    eax,edi      ; block_8
+  40189b:   25 0f 0f 0f 0f          and    eax,0xf0f0f0f
+  4018a0:   41 bd 00 00 00 00       mov    r13d,0x0
+  4018a6:   e9 49 ff ff ff          jmp    4017f4 
+  4018ab:   41 5e                   pop    r14      ; block_9
+  4018ad:   41 5d                   pop    r13
+  4018af:   41 5c                   pop    r12
+  4018b1:   41 58                   pop    r8
+  4018b3:   c3                      ret    
+  4018b4:   41 bd 00 00 00 00       mov    r13d,0x0
+  4018ba:   e9 35 ff ff ff          jmp    4017f4 
+  4018bf:   44 21 c7                and    edi,r8d      ; block_A
+  4018c2:   48 8d 04 3f             lea    rax,[rdi+rdi*1]
+  4018c6:   41 bd 00 00 00 00       mov    r13d,0x0
+  4018cc:   e9 23 ff ff ff          jmp    4017f4 
+  4018d1:   69 c0 01 01 01 01       imul   eax,eax,0x1010101; block_B
+  4018d7:   c1 e8 18                shr    eax,0x18
+  4018da:   41 bd 00 00 00 00       mov    r13d,0x0
+  4018e0:   e9 0f ff ff ff          jmp    4017f4 
+  4018e5:   41 d1 e0                shl    r8d,1        ; block_C
+  4018e8:   e9 58 ff ff ff          jmp    401845 
+  4018ed:   41 bd 00 00 00 00       mov    r13d,0x0
+  4018f3:   e9 fc fe ff ff          jmp    4017f4 
+  4018f8:   81 e7 33 33 33 33       and    edi,0x33333333   ; block_D
+  4018fe:   01 c7                   add    edi,eax
+  401900:   41 bd 00 00 00 00       mov    r13d,0x0
+  401906:   e9 e9 fe ff ff          jmp    4017f4 
+  40190b:   25 33 33 33 33          and    eax,0x33333333   ; block_E
+  401910:   41 bd 00 00 00 00       mov    r13d,0x0
+  401916:   e9 d9 fe ff ff          jmp    4017f4 
+</code></pre>
+<p>The first things we see are the weird constants in the code. Googling them 
+quickly gives some informations about a counting bit algorithm which is
+described <a href="https://stackoverflow.com/questions/15966920/explanation-of-a-method-of-counting
+-set-bits-in-a-32-bit-integer">here</a></p>
+<p>The algorithm is short:</p>
+<pre><code class="language-C">v = v - ((v &gt;&gt; 1) &amp; 0x55555555);                  
+v = (v &amp; 0x33333333) + ((v &gt;&gt; 2) &amp; 0x33333333);    
+c = ((v + (v &gt;&gt; 4) &amp; 0xF0F0F0F) * 0x1010101) &gt;&gt; 24;
+</code></pre>
+<p>and what it does is simple: counting the number of bit set in an 32-bit integer.</p>
+<p>This gaves us a big part of the needed permutation !
+It's easy to understand that we will count the number of bits set in a number,
+and if it's equal to 1, then this number is a power of 2.</p>
+<p>Let's build the rest of the algo. But first, let's have a look at the binary
+representation of r and cur for a given r, let's say 2804.</p>
+<pre><code>If r = 2804, i = 2*(2804 - 2048) = 1512
+bin(2804) = 0b101011110100
+bin(1512) = 0b10111101000
+</code></pre>
+<p>these two numbers are almost similar in base 2! In fact, we just have to flip
+the highest bit of 2804, then shift left the number just one time (multiply by 2
+), and we have cur.</p>
+<p>Suppose that r is the length of our array. First, we initialize an integer 
+<code>mask = 0xffffffff</code> (all bit 1 set) (block_7).
+Then we count the number of bits set of <code>(mask &amp; r)</code> (block_3 and the counting 
+bit algorithm). If it's greater than 1 (block_2), we shift left mask by 1 
+(block_C), and do it again. If it's one, we flip all the bits of mask (block_1).</p>
+<p>For r = 2804, <code>number_of_bit_set(r &amp; 0b11111111111111111111110000000000)</code> = 1.
+So we flip all bits of mask (which is a "not"). That gives us:
+<code>mask = 0b00000000000000000000001111111111</code></p>
+<p>Then we compute <code>(r &amp; mask)</code> (block_A), and shift left the result (block_9). 
+The value is now equal to <code>cur</code> !</p>
+<p>Let's chain the blocks:</p>
+<pre><code>[0x07,0x03,0x00,0x04,0x06,0x0e,0x0d,0x05,0x08,0x0b,0x02,0x0c,0x01,0x0a,0x09].
+</code></pre>
+<h3>GENERATE THE INPUT</h3>
+<p>We now have everything to solve this crackme. Let's quickly remember how our
+input is processed. First, our input is encrypted. After the encryption, the
+encrypted input is cutted in 3 parts. In each part, the value of byte at index i
+must be below or equal i (<code>array[i] &lt;= i</code>). these 3 parts of encrypted input 
+are used to mixup 3 arrays. The uniques permutations generated are the ones 
+which build the control flow graph of the 3 hiddens codes.</p>
+<p>What do we do now ? We know how works the algorithms, and we what we need for
+the permutations:</p>
+<pre><code>game_1: [0x09,0x05,0x0c,0x0a,0x02,0x03,0x00,0x06,0x01,0x08,0x04,0x07,0x0b],
+game_2: [0x0b,0x0c,0x0d,0x02,0x08,0x09,0x04,0x00,0x03,0x0a,0x06,0x01,0x05,0x07]
+game_3: [0x07,0x03,0x00,0x04,0x06,0x0e,0x0d,0x05,0x08,0x0b,0x02,0x0c,0x01,0x0a,0x09]
+</code></pre>
+<p>I've attached a quick script that will gives us the encrypted input we need to 
+generate these permutations. The file is <code>find_input.py</code> [1].</p>
+<p>Let's run it:</p>
+<pre><code>io :: crackmes.one/prisoners_delimma » python3 find_input.py 
+[0, 0, 0, 2, 2, 3, 0, 6, 1, 8, 4, 7, 11]
+[0, 0, 0, 2, 3, 4, 4, 0, 3, 6, 6, 1, 5, 7]
+[0, 0, 0, 2, 2, 1, 2, 5, 8, 1, 2, 1, 1, 10, 9]
+</code></pre>
+<p>If we concat these three arrays, we have what what we need for the encrypted
+input.
+We can find the input that generate the encrypted input with the script
+prisoners.py [2].</p>
+<pre><code>io :: crackmes.one/prisoners_delimma » python3 prisonner.py
+Found 2b and 5f for 0 and 21
+Found b0 and 2f for 1 and 22
+Found 1e and 80 for 2 and 23
+Found b6 and 3e for 3 and 24
+Found b5 and f3 for 4 and 25
+Found 9c and f3 for 5 and 26
+Found 42 and 12 for 6 and 27
+Found fe and a1 for 7 and 28
+Found 93 and 2f for 8 and 29
+Found 27 and 91 for 9 and 30
+Found 14 and e6 for 10 and 31
+Found f2 and 45 for 11 and 32
+Found 02 and 6b for 12 and 33
+Found 79 and f4 for 13 and 34
+Found f7 and 58 for 14 and 35
+Found 58 and b9 for 15 and 36
+Found b4 and 51 for 16 and 37
+Found dd and 57 for 17 and 38
+Found fb and 86 for 18 and 39
+Found 6a and 0c for 19 and 40
+Found be and 99 for 20 and 41
+
+input: 2bb01eb6b59c42fe932714f20279f758b4ddfb6abe5f2f803ef3f312a12f91e6456bf458b95157860c99
+io :: crackmes.one/prisoners_delimma » echo &quot;2bb01eb6b59c42fe932714f20279f758b4ddfb6abe5f2f803ef3f312a12f91e6456bf458b95157860c99&quot; | xxd -r -p | ./prisoners_dilemma
+
+
+
+______     _                           _            ______
+| ___ \   (_)                         ( )          / / / /
+| |_/ / __ _ ___  ___  _ __   ___ _ __|/ ___      / / / / 
+|  __/ '__| / __|/ _ \| '_ \ / _ \ '__| / __|    &lt; &lt; &lt; &lt;  
+| |  | |  | \__ \ (_) | | | |  __/ |    \__ \     \ \ \ \ 
+\_|  |_|  |_|___/\___/|_| |_|\___|_|    |___/      \_\_\_\
+______          ______ _ _                                
+\ \ \ \         |  _  (_) |                               
+ \ \ \ \        | | | |_| | ___ _ __ ___  _ __ ___   __ _ 
+  &gt; &gt; &gt; &gt;       | | | | | |/ _ \ '_ ` _ \| '_ ` _ \ / _` |
+ / / / /        | |/ /| | |  __/ | | | | | | | | | | (_| |
+/_/_/_/         |___/ |_|_|\___|_| |_| |_|_| |_| |_|\__,_|
+
+
+
+The warden is feeling generous today, and wants to play a 
+game. If you win, you may leave with your freedom, but if 
+you lose....                                              
+
+Think long and hard about your strategy, because you only 
+get one chance.                                           
+
+Your move: 
+You won! In utter disbelief, the warden is forced to let
+you go....
+
+Finally, it works ! 
+</code></pre>
+<p>"What we do in life echoes in eternity" -- i
+<a href="https://patchfriday.com/22/">https://patchfriday.com/22/</a></p>
+<p>[1] Source code of find_input.py</p>
+<pre><code class="language-py">def swap(a, i, j):
+    a[i], a[j] = a[j], a[i]
+    return a
+
+base = [0x00,0x01,0x02,0x03,0x04,0x05,0x06,0x07,0x08,0x09,0x0a,0x0b,0x0c,0x0d,0x0e]
+bases = [base[:-2], base[:-1], base[:]]
+needed_arrays =    [[0x09,0x05,0x0c,0x0a,0x02,0x03,0x00,0x06,0x01,0x08,0x04,0x07,0x0b],
+            [0x0b,0x0c,0x0d,0x02,0x08,0x09,0x04,0x00,0x03,0x0a,0x06,0x01,0x05,0x07],
+            [0x07,0x03,0x00,0x04,0x06,0x0e,0x0d,0x05,0x08,0x0b,0x02,0x0c,0x01,0x0a,0x09]]
+
+for i, array in enumerate(needed_arrays):
+    length = len(array) - 1
+    base = bases[i]
+    res = [0xff for i in range(length + 1)]
+    while length &gt;= 0:
+        for j in range(length + 1):
+            if base[j] == array[length]:
+                base = swap(base, length, j)
+                res[length] = j
+                break
+        length -= 1
+    print(res)
+
+</code></pre>
+<p>[2] Source code of prisoners.py</p>
+<pre><code class="language-py">#[0, 0, 0, 2, 2, 3, 0, 6, 1, 8, 4, 7, 11]
+#[0, 0, 0, 2, 3, 4, 4, 0, 3, 6, 6, 1, 5, 7]
+#[0, 0, 0, 2, 2, 1, 2, 5, 8, 1, 2, 1, 1, 10, 9]
+needed =    [[0, 0, 0, 2, 2, 3, 0, 6, 1, 8, 4, 7, 11, 0, 0, 0, 2, 3, 4, 4, 0],
+            [3, 6, 6, 1, 5, 7, 0, 0, 0, 2, 2, 1, 2, 5, 8, 1, 2, 1, 1, 10, 9]]
+LENGTH_INPUT = 42
+key1 = bytearray.fromhex('27749f2cbfede7496059f991b2e1bb16bedc5ea068807bc7e4b95a0cf20e34b72595d13c2cc961e55447')
+key2 = bytearray.fromhex('d387a354528520d5057a40c7962a12bba8400a24480fd80488380b6b8b5761a3e747e797902b7cccfd78')
+current = 0
+res = [0xff for i in range(LENGTH_INPUT)]
+while current &lt; (LENGTH_INPUT / 2):
+    for i in range(256 * 256):
+        j = int(i / 256)
+        k = i &amp; 0xff
+
+        b1 = res[:int(LENGTH_INPUT / 2)]
+        b2 = res[int(LENGTH_INPUT / 2):]
+
+        b1[current] = j
+        b2[current] = k
+
+        for i, c in enumerate(b1):
+           b1[i] ^= key1[i]
+
+        for i, c in enumerate(b2):
+           b2[i] ^= key1[i + int(LENGTH_INPUT / 2)]
+
+        dec = 0x32
+        summ = 0
+        cnt = 0
+        while dec:
+            while cnt != 0x15:
+                summ += b2[cnt]
+                summ &amp;= 0xff
+                b1[cnt] ^= summ
+                cnt += 1
+            cnt = 0
+            summ = 0
+            b1, b2 = b2, b1
+            dec -= 1
+
+        temp_res = b1 + b2
+
+        for i, c in enumerate(temp_res):
+           temp_res[i] ^= key2[i]
+
+        if temp_res[current] == needed[0][current] and temp_res[current + int(LENGTH_INPUT / 2)] == needed[1][current]:
+            res[current] = j
+            res[current + int(LENGTH_INPUT / 2)] = k
+            print(&quot;Found {:02x} and {:02x} for {} and {}&quot;.format(j, k, current, current + int(LENGTH_INPUT / 2)))
+            #print(&quot;Res is {}&quot;.format(bytes(res).hex()))
+            break
+    current += 1
+print(&quot;\ninput: {}&quot;.format(bytes(res).hex()))
+</code></pre>
+        
+        <hr>
+        <a href="https://twitter.com/sar5430">Twitter</a> - 
+        <a href="https://github.com/sar5430">Github</a> - 
+        <a href="https://discord.com/">Discord:</a> sar#5430 -
+        Visit <a href="https://crackmes.one/">Crackmes.one</a>!
+    </body>
+</html>
+    

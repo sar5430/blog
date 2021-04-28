@@ -1,0 +1,63 @@
+
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8" />
+        <title>sar's blog</title>
+
+        <link href="/style/style.css" rel="stylesheet" />
+
+    </head>
+
+    <body>
+
+        <h1>sar's blog</h1>
+        <hr>
+<h2>Hooking toolsuite</h2>
+<p>I decided to post 3 programs I wrote as it could be useful for someone. I 
+mostly use those programs to perform dll injection and hooking. It probably
+contains bugs but it should works on 32 and 64 bits linux and windows systems.</p>
+<p>Here's what the toolsuite contain: </p>
+<h3>hook</h3>
+<p>This is a really small codebase that helps me to make small patches to running
+binaries. The code is platform independant. The .hpp should be enough to 
+understand basic hooking. In case it's not, I've added a small Windows example.</p>
+<h3>dll_loader</h3>
+<p>This is the first of these 3 tools I wrote. 
+It simply perform an injection in a spawning process. It helped me a lot when 
+I needed to write some binary instrumentation. I mostly use it to inject dlls
+that perform patchs on the targeted binary.
+It works as follows: the targeted process is created in a suspended state,
+the instruction at entry point is patched in order to loop on itself, the 
+context is changed ( no other thread is created ), the dll is injected ( in a 
+traditional manner ), the entry point is restored, then the execution is 
+resumed.  </p>
+<p><code>./loader.exe &lt;bin_to_run.exe&gt; &lt;ARGS...&gt; &lt;dll_to_inject.dll&gt;</code> will launch
+<code>bin_to_run.exe</code> and inject <code>dll_to_inject.dll</code></p>
+<p>Of course, the dll must match the architecture ( 32/64 bits ) of the targeted
+binary.</p>
+<h3>manumap</h3>
+<p>This perform basically the same that does <code>dll_loader</code>, except that the 
+injection is made into a running process. The program performs thread 
+hijacking and manually load the dll in memory. It's pretty basic at the moment,
+as the loader only perform relocations fixing, iat building and call TLS 
+callbacks and entry point.</p>
+<p><code>./manumap.exe &lt;PID&gt; &lt;dll_to_inject.dll&gt;</code> will inject <code>dll_to_inject.dll</code> into
+the targeted process.</p>
+<p>Again, the dll must match the architecture.</p>
+<p><em>EDIT: I wrote manumap for linux too!</em></p>
+<h3>Code</h3>
+<p>I often use those tools, in order to perform simple binary instrumentation. </p>
+<p>Most of the time, I build a library performing the instrumentation using hooks 
+with the help of <code>hook</code>, then inject the library using <code>manumap</code> or 
+<code>dll_loader</code>. </p>
+<p>You can find those tools on my github.</p>
+        
+        <hr>
+        <a href="https://twitter.com/sar5430">Twitter</a> - 
+        <a href="https://github.com/sar5430">Github</a> - 
+        <a href="https://discord.com/">Discord:</a> sar#5430 -
+        Visit <a href="https://crackmes.one/">Crackmes.one</a>!
+    </body>
+</html>
+    
