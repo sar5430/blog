@@ -17,6 +17,8 @@ header_template = '''
 
         <h1>sar's blog</h1>
         <hr>
+        <a href="/">Home</a>
+        <hr>
 '''
 
 footer_template = '''
