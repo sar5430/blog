@@ -17,6 +17,8 @@ header_template = '''
 
         <h1>sar's blog</h1>
         <hr>
+        <a href="/">Home</a>
+        <hr>
 '''
 
 footer_template = '''
@@ -76,6 +78,7 @@ def loop_files():
         generate_html_from_post(DIR + f)
     build_index(files)
 
+os.chdir(os.path.dirname(os.path.realpath(__file__)))
 loop_files()
 
 
