@@ -78,7 +78,7 @@ def loop_files():
         generate_html_from_post(DIR + f)
     build_index(files)
 
-os.chdir(os.getcwd())
+os.chdir(os.path.realpath(__file__))
 loop_files()
 
 
