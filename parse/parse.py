@@ -62,7 +62,7 @@ def build_index(files):
 
     content = header_template
     for item in sorted_items:
-        content += "<b>[" + item[0].strftime("%Y/%m/%d") + "]</b>:<a href=\"./p/" + item[0].strftime("%Y-%m-%d") + "-" + item[1] + ".html\">" + item[1].replace("_", " ") + "</a></br>"
+        content += "[" + item[0].strftime("%Y/%m/%d") + "]: <a href=\"./p/" + item[0].strftime("%Y-%m-%d") + "-" + item[1] + ".html\"><b>" + item[1].replace("_", " ") + "</b></a></br>"
     content += footer_template
 
     out = open(OUTDIR + "index.html", "w")

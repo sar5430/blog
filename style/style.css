@@ -18,3 +18,13 @@ pre
 	border-style: double;
     overflow: scroll;
 }
+
+a
+{
+    color: black
+}
+
+a:visited
+{
+    color: black
+}
