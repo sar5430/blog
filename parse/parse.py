@@ -45,7 +45,7 @@ def build_page(filename, content):
 def generate_html_from_post(filename):
     f = open(filename, "r")
     content = f.read()
-    content_html = markdown(content, extensions=["tables"])
+    content_html = markdown(content, extensions=["fenced_code", "tables"])
     build_page(filename, content_html)
 
 def build_index(files):
