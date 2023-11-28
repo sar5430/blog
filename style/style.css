@@ -19,6 +19,7 @@ pre
     background-color: #3aafb9;
     border-style: double;
     white-space: pre-wrap;
+    overflow-wrap: break-word;
 }
 
 a
