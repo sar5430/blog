@@ -9,26 +9,26 @@ body
     width: 60%;
     margin: auto;
     font-family: "Roboto";
-    background-color: #212028;
-    color: #f0f0f0;
+    background-color: #97c8eb;
+    color: #000000;
     font-size: 1.2rem;
 }
 
 pre
 {
-    background-color: #313028;
+    background-color: #3aafb9;
     border-style: double;
     white-space: pre-wrap;
 }
 
 a
 {
-    color: white;
+    color: #000000;
 }
 
 a:visited
 {
-    color: white;
+    color: #000000;
 }
 
 img
