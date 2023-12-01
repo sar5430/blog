@@ -1,0 +1,35 @@
+
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8" />
+        <title>sar's blog</title>
+
+        <link href="/style/style.css" rel="stylesheet" />
+
+    </head>
+
+    <body>
+
+        <h1>sar's blog</h1>
+        <hr>
+        <a href="/">Home</a>
+        <hr>
+<h1>Patching Delphi stack cleaning in Ghidra</h1>
+<p>If you have ever analyzed a Delphi binary using Ghidra, you might have noticed the failure of the decompiler. As shown in the image below, the compiler tends to emit a lot of variables named like "stack0xffffffc4." This partially breaks the decompiler output and is not really readable at all.</p>
+<p><img alt="decompiler fail" src="/static/delphi_stack_patch/decompiler_fail.png" /></p>
+<p>All of this comes from the way Delphi binaries prepare the stack for local variables. The prologue of a function looks like this:</p>
+<p><img alt="delphi prologue" src="/static/delphi_stack_patch/delphi_prologue.png" /></p>
+<p>In this example, the program pushes 0x3b times two null DWORD on the stack. Replacing those instructions with a simple "sub esp, 0x1d8" (0x1d8 = (4 + 4) * 0x3b) is enough to clean the decompiler output:</p>
+<p><img alt="delphi prologue patched" src="/static/delphi_stack_patch/delphi_prologue_patch.png" /></p>
+<p><img alt="decompiler after patch" src="/static/delphi_stack_patch/decompiler_after_patch.png" /></p>
+<p>I did not develop the script that patch all functions' prologues, but it shouldn't be too complex. </p>
+        
+        <hr>
+        <a href="https://twitter.com/sar5430">Twitter</a> - 
+        <a href="https://github.com/sar5430">Github</a> - 
+        <a href="https://discord.com/">Discord:</a> sar#5430 -
+        Visit <a href="https://crackmes.one/">Crackmes.one</a>!
+    </body>
+</html>
+    
